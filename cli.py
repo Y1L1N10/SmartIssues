@@ -133,18 +133,21 @@ def analyze(ctx, repo, state, max_issues, labels, output, output_format, no_cach
                 },
             )
 
-        # Generate output
-        summary = processor.generate_batch_summary(results)
+        # Generate output with AI recommendations
+        click.echo("Generating summary and recommendations...")
+        summary = processor.generate_batch_summary(results, issues)
 
         if output_format == "console":
-            output_text = formatter.format_console_output(results, issues)
+            output_text = formatter.format_console_output(results, issues, summary)
             click.echo("\n" + output_text)
 
-            # Print summary
+            # Print summary stats
             click.echo("\n--- Summary ---")
-            click.echo(f"Total issues: {summary['total']}")
-            click.echo(f"By priority: {summary['by_priority']}")
-            click.echo(f"By category: {summary['by_category']}")
+            click.echo(f"Total issues: {summary.total_issues}")
+            click.echo(f"By priority: {summary.by_priority}")
+            click.echo(f"By category: {summary.by_category}")
+            if summary.quick_wins:
+                click.echo(f"Quick wins: {summary.quick_wins}")
 
         elif output_format == "report":
             output_text = formatter.format_report(repo, issues, results, summary)
@@ -159,7 +162,7 @@ def analyze(ctx, repo, state, max_issues, labels, output, output_format, no_cach
             click.echo(f"Report saved to: {output_path}")
 
         elif output_format == "todo":
-            output_text = formatter.format_todo_list(results, issues)
+            output_text = formatter.format_todo_list(results, issues, summary)
             if output:
                 output_path = Path(output)
             else:

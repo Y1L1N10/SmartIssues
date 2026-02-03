@@ -38,6 +38,8 @@ class AnalysisResult:
     """Result of AI analysis on an issue."""
 
     issue_number: int
+    issue_title: str
+    issue_url: str
     category: Category
     priority: Priority
     summary: str
@@ -45,11 +47,21 @@ class AnalysisResult:
     estimated_effort: str
     key_points: list[str]
     related_topics: list[str]
+    action_items: list[str] = None
+    blockers: list[str] = None
+
+    def __post_init__(self):
+        if self.action_items is None:
+            self.action_items = []
+        if self.blockers is None:
+            self.blockers = []
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {
             "issue_number": self.issue_number,
+            "issue_title": self.issue_title,
+            "issue_url": self.issue_url,
             "category": self.category.value,
             "priority": self.priority.value,
             "summary": self.summary,
@@ -57,6 +69,34 @@ class AnalysisResult:
             "estimated_effort": self.estimated_effort,
             "key_points": self.key_points,
             "related_topics": self.related_topics,
+            "action_items": self.action_items,
+            "blockers": self.blockers,
+        }
+
+
+@dataclass
+class BatchAnalysisSummary:
+    """Summary of batch analysis results."""
+
+    total_issues: int
+    by_category: dict
+    by_priority: dict
+    by_effort: dict
+    high_priority_issues: list[int]
+    stale_issues: list[int]
+    quick_wins: list[int]  # Low effort + high value
+    ai_recommendations: str
+
+    def to_dict(self) -> dict:
+        return {
+            "total_issues": self.total_issues,
+            "by_category": self.by_category,
+            "by_priority": self.by_priority,
+            "by_effort": self.by_effort,
+            "high_priority_issues": self.high_priority_issues,
+            "stale_issues": self.stale_issues,
+            "quick_wins": self.quick_wins,
+            "ai_recommendations": self.ai_recommendations,
         }
 
 
@@ -83,10 +123,15 @@ Issue #{number}: {title}
 Content:
 {body}
 
-Current Labels: {labels}
-Author: {author}
-Created: {created_at}
-Comments: {comments_count}
+Metadata:
+- Current Labels: {labels}
+- Author: {author}
+- Created: {created_at}
+- Age: {age_days} days
+- Comments: {comments_count}
+- Assignees: {assignees}
+- Milestone: {milestone}
+{comments_section}
 
 Respond with a JSON object in this exact format:
 {{
@@ -96,8 +141,27 @@ Respond with a JSON object in this exact format:
     "suggested_labels": ["label1", "label2"],
     "estimated_effort": "trivial|small|medium|large|extra-large",
     "key_points": ["point1", "point2"],
-    "related_topics": ["topic1", "topic2"]
+    "related_topics": ["topic1", "topic2"],
+    "action_items": ["specific action 1", "specific action 2"],
+    "blockers": ["blocker if any"]
 }}"""
+
+    BATCH_SUMMARY_PROMPT = """Based on the analysis of {count} GitHub issues, provide strategic recommendations.
+
+Issue Statistics:
+- By Category: {by_category}
+- By Priority: {by_priority}
+- By Effort: {by_effort}
+- High Priority Issues: {high_priority}
+- Stale Issues (30+ days): {stale_count}
+
+Provide a concise summary (3-5 sentences) with:
+1. Overall project health assessment
+2. Top priorities to address
+3. Quick wins (low effort, high impact)
+4. Suggested workflow improvements
+
+Respond in plain text, not JSON."""
 
     def __init__(
         self,
@@ -141,6 +205,14 @@ Respond with a JSON object in this exact format:
         Returns:
             AnalysisResult with AI analysis
         """
+        # Build comments section if available
+        comments_section = ""
+        if hasattr(issue, "comments") and issue.comments:
+            comments_text = "\n".join(
+                [f"  - {c.author}: {c.body[:200]}..." for c in issue.comments[:5]]
+            )
+            comments_section = f"\nRecent Comments:\n{comments_text}"
+
         prompt = self.ANALYSIS_PROMPT_TEMPLATE.format(
             number=issue.number,
             title=issue.title,
@@ -148,7 +220,11 @@ Respond with a JSON object in this exact format:
             labels=", ".join(issue.labels) if issue.labels else "None",
             author=issue.author,
             created_at=issue.created_at.strftime("%Y-%m-%d"),
+            age_days=issue.age_days if hasattr(issue, "age_days") else "N/A",
             comments_count=issue.comments_count,
+            assignees=", ".join(issue.assignees) if hasattr(issue, "assignees") and issue.assignees else "None",
+            milestone=issue.milestone if hasattr(issue, "milestone") and issue.milestone else "None",
+            comments_section=comments_section,
         )
 
         response_text = self._call_api(prompt)
@@ -156,6 +232,8 @@ Respond with a JSON object in this exact format:
 
         return AnalysisResult(
             issue_number=issue.number,
+            issue_title=issue.title,
+            issue_url=issue.url,
             category=Category(analysis_data.get("category", "other")),
             priority=Priority(analysis_data.get("priority", "medium")),
             summary=analysis_data.get("summary", ""),
@@ -163,6 +241,8 @@ Respond with a JSON object in this exact format:
             estimated_effort=analysis_data.get("estimated_effort", "medium"),
             key_points=analysis_data.get("key_points", []),
             related_topics=analysis_data.get("related_topics", []),
+            action_items=analysis_data.get("action_items", []),
+            blockers=analysis_data.get("blockers", []),
         )
 
     def analyze_issues(
@@ -189,27 +269,42 @@ Respond with a JSON object in this exact format:
 
         return results
 
-    def generate_batch_summary(self, results: list[AnalysisResult]) -> dict:
-        """Generate a summary of multiple analysis results.
+    def generate_batch_summary(
+        self, results: list[AnalysisResult], issues: list[Issue] = None
+    ) -> BatchAnalysisSummary:
+        """Generate a comprehensive summary of multiple analysis results.
 
         Args:
             results: List of analysis results
+            issues: Original issues (for stale detection)
 
         Returns:
-            Summary dictionary with statistics and insights
+            BatchAnalysisSummary with statistics and AI recommendations
         """
         if not results:
-            return {"total": 0, "by_category": {}, "by_priority": {}}
+            return BatchAnalysisSummary(
+                total_issues=0,
+                by_category={},
+                by_priority={},
+                by_effort={},
+                high_priority_issues=[],
+                stale_issues=[],
+                quick_wins=[],
+                ai_recommendations="No issues to analyze.",
+            )
 
         by_category = {}
         by_priority = {}
+        by_effort = {}
 
         for result in results:
             cat = result.category.value
             pri = result.priority.value
+            effort = result.estimated_effort
 
             by_category[cat] = by_category.get(cat, 0) + 1
             by_priority[pri] = by_priority.get(pri, 0) + 1
+            by_effort[effort] = by_effort.get(effort, 0) + 1
 
         # Find high priority items
         high_priority_issues = [
@@ -218,12 +313,61 @@ Respond with a JSON object in this exact format:
             if r.priority in (Priority.CRITICAL, Priority.HIGH)
         ]
 
-        return {
-            "total": len(results),
-            "by_category": by_category,
-            "by_priority": by_priority,
-            "high_priority_issues": high_priority_issues,
-        }
+        # Find stale issues
+        stale_issues = []
+        if issues:
+            for issue in issues:
+                if hasattr(issue, "is_stale") and issue.is_stale:
+                    stale_issues.append(issue.number)
+
+        # Find quick wins (small/trivial effort + high/critical priority)
+        quick_wins = [
+            r.issue_number
+            for r in results
+            if r.estimated_effort in ("trivial", "small")
+            and r.priority in (Priority.CRITICAL, Priority.HIGH)
+        ]
+
+        # Generate AI recommendations
+        ai_recommendations = self._generate_recommendations(
+            len(results), by_category, by_priority, by_effort,
+            high_priority_issues, len(stale_issues)
+        )
+
+        return BatchAnalysisSummary(
+            total_issues=len(results),
+            by_category=by_category,
+            by_priority=by_priority,
+            by_effort=by_effort,
+            high_priority_issues=high_priority_issues,
+            stale_issues=stale_issues,
+            quick_wins=quick_wins,
+            ai_recommendations=ai_recommendations,
+        )
+
+    def _generate_recommendations(
+        self,
+        count: int,
+        by_category: dict,
+        by_priority: dict,
+        by_effort: dict,
+        high_priority: list,
+        stale_count: int,
+    ) -> str:
+        """Generate AI-powered recommendations for the issue set."""
+        prompt = self.BATCH_SUMMARY_PROMPT.format(
+            count=count,
+            by_category=json.dumps(by_category),
+            by_priority=json.dumps(by_priority),
+            by_effort=json.dumps(by_effort),
+            high_priority=len(high_priority),
+            stale_count=stale_count,
+        )
+
+        try:
+            return self._call_api(prompt, max_tokens=500)
+        except Exception:
+            return "Unable to generate AI recommendations."
 
     def _parse_response(self, response_text: str) -> dict:
         """Parse JSON response from Claude.

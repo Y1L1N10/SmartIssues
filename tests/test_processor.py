@@ -39,6 +39,8 @@ class TestAnalysisResult:
         """Test AnalysisResult serialization."""
         result = AnalysisResult(
             issue_number=1,
+            issue_title="Test Issue",
+            issue_url="https://github.com/test/repo/issues/1",
             category=Category.BUG,
             priority=Priority.HIGH,
             summary="Test summary",
@@ -46,15 +48,19 @@ class TestAnalysisResult:
             estimated_effort="medium",
             key_points=["Point 1", "Point 2"],
             related_topics=["testing"],
+            action_items=["Fix the bug"],
+            blockers=[],
         )
 
         data = result.to_dict()
 
         assert data["issue_number"] == 1
+        assert data["issue_title"] == "Test Issue"
         assert data["category"] == "bug"
         assert data["priority"] == "high"
         assert data["summary"] == "Test summary"
         assert data["suggested_labels"] == ["bug", "urgent"]
+        assert data["action_items"] == ["Fix the bug"]
 
 
 class TestIssueProcessor:
@@ -203,36 +209,50 @@ class TestIssueProcessor:
     @patch("src.processor.anthropic.Anthropic")
     def test_generate_batch_summary(self, mock_anthropic_class):
         """Test generating summary from multiple results."""
+        mock_anthropic = MagicMock()
+        mock_anthropic_class.return_value = mock_anthropic
+
+        # Mock the API call for recommendations
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text="Test recommendations")]
+        mock_anthropic.messages.create.return_value = mock_message
+
         processor = IssueProcessor("test_key")
 
         results = [
             AnalysisResult(
                 issue_number=1,
+                issue_title="Bug 1",
+                issue_url="https://example.com/1",
                 category=Category.BUG,
                 priority=Priority.HIGH,
                 summary="",
                 suggested_labels=[],
-                estimated_effort="",
+                estimated_effort="small",
                 key_points=[],
                 related_topics=[],
             ),
             AnalysisResult(
                 issue_number=2,
+                issue_title="Bug 2",
+                issue_url="https://example.com/2",
                 category=Category.BUG,
                 priority=Priority.CRITICAL,
                 summary="",
                 suggested_labels=[],
-                estimated_effort="",
+                estimated_effort="large",
                 key_points=[],
                 related_topics=[],
             ),
             AnalysisResult(
                 issue_number=3,
+                issue_title="Feature 1",
+                issue_url="https://example.com/3",
                 category=Category.FEATURE,
                 priority=Priority.LOW,
                 summary="",
                 suggested_labels=[],
-                estimated_effort="",
+                estimated_effort="medium",
                 key_points=[],
                 related_topics=[],
             ),
@@ -240,13 +260,15 @@ class TestIssueProcessor:
 
         summary = processor.generate_batch_summary(results)
 
-        assert summary["total"] == 3
-        assert summary["by_category"]["bug"] == 2
-        assert summary["by_category"]["feature"] == 1
-        assert summary["by_priority"]["high"] == 1
-        assert summary["by_priority"]["critical"] == 1
-        assert 1 in summary["high_priority_issues"]
-        assert 2 in summary["high_priority_issues"]
+        assert summary.total_issues == 3
+        assert summary.by_category["bug"] == 2
+        assert summary.by_category["feature"] == 1
+        assert summary.by_priority["high"] == 1
+        assert summary.by_priority["critical"] == 1
+        assert 1 in summary.high_priority_issues
+        assert 2 in summary.high_priority_issues
+        # Issue 1 is high priority + small effort = quick win
+        assert 1 in summary.quick_wins
 
     @patch("src.processor.anthropic.Anthropic")
     def test_test_connection_anthropic_success(self, mock_anthropic_class):
