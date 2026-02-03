@@ -17,7 +17,7 @@ class Config:
     openrouter_api_key: str = ""
     api_provider: str = "anthropic"  # "anthropic" or "openrouter"
     default_repo: Optional[str] = None
-    claude_model: str = "claude-sonnet-4-20250514"
+    claude_model: str = "claude-3-5-sonnet-20241022"
     max_issues: int = 30
     cache_ttl: int = 3600
     output_dir: Path = field(default_factory=lambda: Path("./output"))

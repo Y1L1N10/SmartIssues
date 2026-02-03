@@ -153,10 +153,21 @@ class GitHubClient:
         Returns:
             Dictionary with rate limit details
         """
-        rate_limit = self.client.get_rate_limit()
-        core = rate_limit.core
-        return {
-            "limit": core.limit,
-            "remaining": core.remaining,
-            "reset_at": core.reset.isoformat(),
-        }
+        try:
+            rate_limit = self.client.get_rate_limit()
+            # Handle different PyGithub versions/structures
+            if hasattr(rate_limit, "core"):
+                core = rate_limit.core
+            elif hasattr(rate_limit, "resources") and hasattr(rate_limit.resources, "core"):
+                core = rate_limit.resources.core
+            else:
+                # Fallback to a basic check or return empty info
+                return {"limit": "unknown", "remaining": "unknown", "reset_at": "unknown"}
+
+            return {
+                "limit": core.limit,
+                "remaining": core.remaining,
+                "reset_at": core.reset.isoformat() if hasattr(core.reset, "isoformat") else str(core.reset),
+            }
+        except Exception:
+            return {"limit": "err", "remaining": "err", "reset_at": "err"}

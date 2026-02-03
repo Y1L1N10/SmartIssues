@@ -75,6 +75,7 @@ def analyze(ctx, repo, state, max_issues, labels, output, output_format, no_cach
         config.active_api_key,
         config.effective_model,
         provider=config.api_provider,
+        debug=config.debug,
     )
     formatter = ReportFormatter()
     cache = CacheManager(default_ttl=config.cache_ttl)
@@ -211,6 +212,7 @@ def check(ctx):
                 config.active_api_key,
                 config.effective_model,
                 provider=config.api_provider,
+                debug=config.debug,
             )
             if processor.test_connection():
                 click.echo(click.style(f"  [OK] {provider_name} API connected", fg="green"))

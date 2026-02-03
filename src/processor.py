@@ -104,6 +104,7 @@ Respond with a JSON object in this exact format:
         api_key: str,
         model: str = "claude-sonnet-4-20250514",
         provider: Literal["anthropic", "openrouter"] = "anthropic",
+        debug: bool = False,
     ):
         """Initialize the processor.
 
@@ -111,14 +112,20 @@ Respond with a JSON object in this exact format:
             api_key: API key (Anthropic or OpenRouter)
             model: Model to use
             provider: API provider ("anthropic" or "openrouter")
+            debug: Enable debug logging
         """
         self.provider = provider
         self.model = model
+        self.debug = debug
 
         if provider == "openrouter":
             self.openai_client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=api_key,
+                default_headers={
+                    "HTTP-Referer": "https://github.com/Y1L1N10/SmartIssues",
+                    "X-Title": "SmartIssues",
+                }
             )
             self.anthropic_client = None
         else:
@@ -300,5 +307,7 @@ Respond with a JSON object in this exact format:
                     messages=[{"role": "user", "content": "Hello"}],
                 )
                 return len(message.content) > 0
-        except (anthropic.APIError, Exception):
+        except Exception as e:
+            if hasattr(self, "debug") and self.debug:
+                print(f"DEBUG: API connection test failed: {e}")
             return False
