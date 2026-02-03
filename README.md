@@ -1,194 +1,132 @@
 # SmartIssues
 
-AI-driven GitHub Issues analysis tool powered by Claude.
+AI 驱动的 GitHub Issues 智能分析工具。
 
-## Features
+## 核心功能
 
-- **Automatic Issue Fetching**: Fetch issues from any GitHub repository (public or private)
-- **AI-Powered Analysis**: Use Claude AI to categorize, prioritize, and summarize issues
-- **Markdown Reports**: Generate detailed reports with insights and recommendations
-- **Todo Lists**: Create actionable task lists sorted by priority
-- **CLI Interface**: Easy-to-use command line interface
-- **GitHub Actions**: Automate report generation with scheduled workflows
-- **Caching**: Local cache support for faster repeated analysis
-- **Multi-repo Support**: Analyze multiple repositories in batch
+- **智能分析**: Claude AI 自动分类、评估优先级、生成摘要
+- **报告生成**: Markdown 格式的详细报告和 Todo 列表
+- **多 API 支持**: 支持 Anthropic 和 OpenRouter
+- **批量处理**: 支持多仓库批量分析
+- **本地缓存**: 避免重复 API 调用
 
-## Installation
+## 快速开始
+
+### 安装
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/smartissues.git
-cd smartissues
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+git clone https://github.com/Y1L1N10/SmartIssues.git
+cd SmartIssues
 pip install -r requirements.txt
 ```
 
-## Configuration
+### 配置
 
-1. Copy the example environment file:
 ```bash
 cp .env.example .env
 ```
 
-2. Edit `.env` with your credentials:
-```env
-GITHUB_TOKEN=your_github_personal_access_token
-ANTHROPIC_API_KEY=your_anthropic_api_key
-```
-
-### Getting API Keys
-
-- **GitHub Token**: Go to [GitHub Settings > Developer Settings > Personal Access Tokens](https://github.com/settings/tokens) and create a token with `repo` scope
-- **Anthropic API Key**: Sign up at [Anthropic Console](https://console.anthropic.com/) and create an API key
-
-## Usage
-
-### Check Configuration
+编辑 `.env`:
 
 ```bash
+# GitHub Token (必填)
+GITHUB_TOKEN=ghp_xxx
+
+# API 提供商: anthropic 或 openrouter
+API_PROVIDER=openrouter
+
+# OpenRouter API Key
+OPENROUTER_API_KEY=sk-or-v1-xxx
+
+# 或 Anthropic API Key
+# ANTHROPIC_API_KEY=sk-ant-xxx
+
+# 模型 (可选)
+CLAUDE_MODEL=claude-sonnet-4-20250514
+```
+
+### 使用
+
+```bash
+# 检查配置
 python cli.py check
+
+# 分析 Issues (控制台输出)
+python cli.py analyze owner/repo -n 10
+
+# 生成报告
+python cli.py analyze owner/repo -f report -o report.md
+
+# 生成 Todo 列表
+python cli.py analyze owner/repo -f todo -o todo.md
 ```
 
-### Analyze Issues
+## 命令参考
 
-```bash
-# Basic analysis (console output)
-python cli.py analyze owner/repo
+| 命令 | 说明 |
+|------|------|
+| `analyze <repo>` | 分析仓库 Issues |
+| `check` | 检查 API 连接 |
+| `info <repo>` | 查看仓库信息 |
+| `cache` | 管理本地缓存 |
 
-# Generate markdown report
-python cli.py analyze owner/repo --format report --output report.md
+### analyze 选项
 
-# Generate todo list
-python cli.py analyze owner/repo --format todo --output todo.md
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `-n, --max-issues` | 最大 Issue 数量 | 30 |
+| `-f, --format` | 输出格式 (console/report/todo) | console |
+| `-o, --output` | 输出文件路径 | - |
+| `--state` | 状态过滤 (open/closed/all) | open |
+| `-l, --labels` | 标签过滤 | - |
+| `--no-cache` | 禁用缓存 | false |
 
-# Filter by state and labels
-python cli.py analyze owner/repo --state open --labels bug --labels critical
+## 输出示例
 
-# Limit number of issues
-python cli.py analyze owner/repo --max-issues 10
-```
+### 分析结果
 
-### Repository Info
+每个 Issue 包含:
+- **分类**: bug/feature/enhancement/documentation 等
+- **优先级**: critical/high/medium/low
+- **工作量**: trivial/small/medium/large/extra-large
+- **摘要**: 2-3 句话总结
+- **行动项**: 具体待办事项
+- **阻塞项**: 潜在障碍
 
-```bash
-python cli.py info owner/repo
-```
+### AI 推荐
 
-### Cache Management
+批量分析后自动生成:
+- 项目健康度评估
+- 优先处理建议
+- Quick Wins (高价值低成本任务)
 
-```bash
-# View cache stats
-python cli.py cache
-
-# Clear all cache
-python cli.py cache --clear
-
-# Remove expired entries
-python cli.py cache --cleanup
-```
-
-## CLI Options
-
-```
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Commands:
-  analyze  Analyze issues from a GitHub repository
-  cache    Manage the local cache
-  check    Check API connections and configuration
-  info     Show information about a repository
-
-Options:
-  --version  Show the version and exit.
-  --help     Show this message and exit.
-```
-
-### Analyze Command Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--state` | Filter by issue state (open/closed/all) | open |
-| `--max-issues, -n` | Maximum issues to fetch | 30 |
-| `--labels, -l` | Filter by labels (can use multiple times) | - |
-| `--output, -o` | Output file path | - |
-| `--format, -f` | Output format (console/report/todo) | console |
-| `--no-cache` | Disable caching | False |
-
-## GitHub Actions
-
-The project includes GitHub Actions workflows for automated analysis:
-
-### Auto Report (`auto_report.yml`)
-
-- Runs daily at 9:00 AM UTC
-- Can be triggered manually with custom repository input
-- Generates and uploads report as artifact
-- Optionally creates an issue with the report
-
-### CI (`ci.yml`)
-
-- Runs on push and pull requests
-- Tests across Python 3.10, 3.11, 3.12
-- Includes linting with ruff and type checking with mypy
-
-## Project Structure
+## 项目结构
 
 ```
 SmartIssues/
 ├── src/
-│   ├── __init__.py
-│   ├── config.py           # Configuration management
-│   ├── github_client.py    # GitHub API wrapper
-│   ├── processor.py        # Claude AI analysis
-│   ├── formatter.py        # Output formatting
-│   ├── utils.py            # Utility functions
-│   └── cache.py            # Local cache management
-├── templates/
-│   ├── report.md.jinja2    # Report template
-│   └── todo.md.jinja2      # Todo template
-├── tests/
-│   ├── test_github_client.py
-│   └── test_processor.py
-├── .github/workflows/
-│   ├── auto_report.yml
-│   └── ci.yml
-├── cli.py                  # CLI entry point
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
+│   ├── config.py          # 配置管理
+│   ├── github_client.py   # GitHub API
+│   ├── processor.py       # AI 分析
+│   ├── formatter.py       # 输出格式化
+│   ├── cache.py           # 缓存管理
+│   └── utils.py           # 工具函数
+├── templates/             # Jinja2 模板
+├── tests/                 # 单元测试
+├── cli.py                 # CLI 入口
+└── .env.example           # 配置模板
 ```
 
-## Development
-
-### Running Tests
+## 开发
 
 ```bash
-# Run all tests
+# 运行测试
 pytest tests/ -v
 
-# Run with coverage
-pytest tests/ -v --cov=src --cov-report=html
-```
-
-### Code Style
-
-```bash
-# Install dev tools
-pip install ruff mypy
-
-# Run linter
+# 代码检查
 ruff check .
-
-# Run type checker
-mypy src/
 ```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT
