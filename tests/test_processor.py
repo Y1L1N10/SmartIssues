@@ -61,12 +61,33 @@ class TestIssueProcessor:
     """Tests for IssueProcessor."""
 
     @patch("src.processor.anthropic.Anthropic")
-    def test_init(self, mock_anthropic_class):
-        """Test processor initialization."""
-        processor = IssueProcessor("test_api_key", "claude-sonnet-4-20250514")
+    def test_init_anthropic(self, mock_anthropic_class):
+        """Test processor initialization with Anthropic provider."""
+        processor = IssueProcessor(
+            "test_api_key", "claude-sonnet-4-20250514", provider="anthropic"
+        )
 
         mock_anthropic_class.assert_called_once_with(api_key="test_api_key")
         assert processor.model == "claude-sonnet-4-20250514"
+        assert processor.provider == "anthropic"
+        assert processor.anthropic_client is not None
+        assert processor.openai_client is None
+
+    @patch("src.processor.OpenAI")
+    def test_init_openrouter(self, mock_openai_class):
+        """Test processor initialization with OpenRouter provider."""
+        processor = IssueProcessor(
+            "test_api_key", "anthropic/claude-sonnet-4-20250514", provider="openrouter"
+        )
+
+        mock_openai_class.assert_called_once_with(
+            base_url="https://openrouter.ai/api/v1",
+            api_key="test_api_key",
+        )
+        assert processor.model == "anthropic/claude-sonnet-4-20250514"
+        assert processor.provider == "openrouter"
+        assert processor.openai_client is not None
+        assert processor.anthropic_client is None
 
     @patch("src.processor.anthropic.Anthropic")
     def test_parse_response_valid_json(self, mock_anthropic_class):
@@ -102,8 +123,8 @@ class TestIssueProcessor:
         assert result["priority"] == "medium"
 
     @patch("src.processor.anthropic.Anthropic")
-    def test_analyze_issue(self, mock_anthropic_class):
-        """Test analyzing a single issue."""
+    def test_analyze_issue_anthropic(self, mock_anthropic_class):
+        """Test analyzing a single issue with Anthropic."""
         mock_anthropic = MagicMock()
         mock_anthropic_class.return_value = mock_anthropic
 
@@ -117,7 +138,7 @@ class TestIssueProcessor:
         ]
         mock_anthropic.messages.create.return_value = mock_message
 
-        processor = IssueProcessor("test_key")
+        processor = IssueProcessor("test_key", provider="anthropic")
 
         issue = Issue(
             number=1,
@@ -137,6 +158,47 @@ class TestIssueProcessor:
         assert result.issue_number == 1
         assert result.category == Category.BUG
         assert result.priority == Priority.HIGH
+
+    @patch("src.processor.OpenAI")
+    def test_analyze_issue_openrouter(self, mock_openai_class):
+        """Test analyzing a single issue with OpenRouter."""
+        mock_openai = MagicMock()
+        mock_openai_class.return_value = mock_openai
+
+        mock_message = MagicMock()
+        mock_message.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content='{"category": "feature", "priority": "medium", "summary": "Test", '
+                    '"suggested_labels": ["enhancement"], "estimated_effort": "medium", '
+                    '"key_points": ["new feature"], "related_topics": ["ui"]}'
+                )
+            )
+        ]
+        mock_openai.chat.completions.create.return_value = mock_message
+
+        processor = IssueProcessor(
+            "test_key", "anthropic/claude-sonnet-4-20250514", provider="openrouter"
+        )
+
+        issue = Issue(
+            number=2,
+            title="Feature Request",
+            body="Add dark mode",
+            state="open",
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            author="user",
+            labels=["enhancement"],
+            comments_count=0,
+            url="https://example.com",
+        )
+
+        result = processor.analyze_issue(issue)
+
+        assert result.issue_number == 2
+        assert result.category == Category.FEATURE
+        assert result.priority == Priority.MEDIUM
 
     @patch("src.processor.anthropic.Anthropic")
     def test_generate_batch_summary(self, mock_anthropic_class):
@@ -187,8 +249,8 @@ class TestIssueProcessor:
         assert 2 in summary["high_priority_issues"]
 
     @patch("src.processor.anthropic.Anthropic")
-    def test_test_connection_success(self, mock_anthropic_class):
-        """Test successful API connection check."""
+    def test_test_connection_anthropic_success(self, mock_anthropic_class):
+        """Test successful Anthropic API connection check."""
         mock_anthropic = MagicMock()
         mock_anthropic_class.return_value = mock_anthropic
 
@@ -196,7 +258,22 @@ class TestIssueProcessor:
         mock_message.content = [MagicMock(text="Hello")]
         mock_anthropic.messages.create.return_value = mock_message
 
-        processor = IssueProcessor("test_key")
+        processor = IssueProcessor("test_key", provider="anthropic")
+        result = processor.test_connection()
+
+        assert result is True
+
+    @patch("src.processor.OpenAI")
+    def test_test_connection_openrouter_success(self, mock_openai_class):
+        """Test successful OpenRouter API connection check."""
+        mock_openai = MagicMock()
+        mock_openai_class.return_value = mock_openai
+
+        mock_message = MagicMock()
+        mock_message.choices = [MagicMock(message=MagicMock(content="Hello"))]
+        mock_openai.chat.completions.create.return_value = mock_message
+
+        processor = IssueProcessor("test_key", provider="openrouter")
         result = processor.test_connection()
 
         assert result is True

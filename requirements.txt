@@ -1,8 +1,9 @@
 # GitHub API
 PyGithub>=2.1.1
 
-# Anthropic Claude API
+# AI APIs
 anthropic>=0.18.0
+openai>=1.0.0  # For OpenRouter compatibility
 
 # CLI
 click>=8.1.7

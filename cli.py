@@ -71,7 +71,11 @@ def analyze(ctx, repo, state, max_issues, labels, output, output_format, no_cach
 
     # Initialize components
     github_client = GitHubClient(config.github_token)
-    processor = IssueProcessor(config.anthropic_api_key, config.claude_model)
+    processor = IssueProcessor(
+        config.active_api_key,
+        config.effective_model,
+        provider=config.api_provider,
+    )
     formatter = ReportFormatter()
     cache = CacheManager(default_ttl=config.cache_ttl)
 
@@ -196,17 +200,24 @@ def check(ctx):
         except Exception as e:
             click.echo(click.style(f"  [FAIL] GitHub error: {e}", fg="red"))
 
-    # Check Claude connection
-    if config.anthropic_api_key:
-        click.echo("Checking Claude API connection...")
+    # Check AI API connection
+    if config.active_api_key:
+        provider_name = "OpenRouter" if config.api_provider == "openrouter" else "Anthropic"
+        click.echo(f"Checking {provider_name} API connection...")
+        click.echo(f"       Provider: {config.api_provider}")
+        click.echo(f"       Model: {config.effective_model}")
         try:
-            processor = IssueProcessor(config.anthropic_api_key, config.claude_model)
+            processor = IssueProcessor(
+                config.active_api_key,
+                config.effective_model,
+                provider=config.api_provider,
+            )
             if processor.test_connection():
-                click.echo(click.style("  [OK] Claude API connected", fg="green"))
+                click.echo(click.style(f"  [OK] {provider_name} API connected", fg="green"))
             else:
-                click.echo(click.style("  [FAIL] Claude API connection failed", fg="red"))
+                click.echo(click.style(f"  [FAIL] {provider_name} API connection failed", fg="red"))
         except Exception as e:
-            click.echo(click.style(f"  [FAIL] Claude error: {e}", fg="red"))
+            click.echo(click.style(f"  [FAIL] {provider_name} error: {e}", fg="red"))
 
 
 @cli.command()

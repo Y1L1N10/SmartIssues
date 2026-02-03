@@ -3,9 +3,10 @@
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 
 import anthropic
+from openai import OpenAI
 
 from .github_client import Issue
 
@@ -98,15 +99,31 @@ Respond with a JSON object in this exact format:
     "related_topics": ["topic1", "topic2"]
 }}"""
 
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-sonnet-4-20250514",
+        provider: Literal["anthropic", "openrouter"] = "anthropic",
+    ):
         """Initialize the processor.
 
         Args:
-            api_key: Anthropic API key
-            model: Claude model to use
+            api_key: API key (Anthropic or OpenRouter)
+            model: Model to use
+            provider: API provider ("anthropic" or "openrouter")
         """
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.provider = provider
         self.model = model
+
+        if provider == "openrouter":
+            self.openai_client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=api_key,
+            )
+            self.anthropic_client = None
+        else:
+            self.anthropic_client = anthropic.Anthropic(api_key=api_key)
+            self.openai_client = None
 
     def analyze_issue(self, issue: Issue) -> AnalysisResult:
         """Analyze a single issue using Claude.
@@ -127,15 +144,7 @@ Respond with a JSON object in this exact format:
             comments_count=issue.comments_count,
         )
 
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            system=self.SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        # Parse the response
-        response_text = message.content[0].text
+        response_text = self._call_api(prompt)
         analysis_data = self._parse_response(response_text)
 
         return AnalysisResult(
@@ -241,18 +250,55 @@ Respond with a JSON object in this exact format:
                 "related_topics": [],
             }
 
+    def _call_api(self, prompt: str, max_tokens: int = 1024) -> str:
+        """Call the appropriate API based on provider.
+
+        Args:
+            prompt: The prompt to send
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            Response text from the API
+        """
+        if self.provider == "openrouter":
+            message = self.openai_client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            return message.choices[0].message.content
+        else:
+            message = self.anthropic_client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=self.SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text
+
     def test_connection(self) -> bool:
-        """Test if the Anthropic API connection is working.
+        """Test if the API connection is working.
 
         Returns:
             True if connection successful, False otherwise
         """
         try:
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=10,
-                messages=[{"role": "user", "content": "Hello"}],
-            )
-            return len(message.content) > 0
-        except anthropic.APIError:
+            if self.provider == "openrouter":
+                message = self.openai_client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "Hello"}],
+                )
+                return len(message.choices) > 0
+            else:
+                message = self.anthropic_client.messages.create(
+                    model=self.model,
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "Hello"}],
+                )
+                return len(message.content) > 0
+        except (anthropic.APIError, Exception):
             return False
