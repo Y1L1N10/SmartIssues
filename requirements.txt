@@ -1,0 +1,26 @@
+# GitHub API
+PyGithub>=2.1.1
+
+# AI APIs
+anthropic>=0.18.0
+openai>=1.0.0  # For OpenRouter compatibility
+
+# CLI
+click>=8.1.7
+
+# Template rendering
+Jinja2>=3.1.2
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# HTTP requests (for additional API calls)
+requests>=2.31.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+
+# Type hints
+typing-extensions>=4.8.0
